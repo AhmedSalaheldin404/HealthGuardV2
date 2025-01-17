@@ -18,6 +18,7 @@ public interface IAuthService
 
     Task<bool> IsUsernameExists(string username);
     Task<bool> IsEmailExists(string email);
+    Task DeleteAccount(int userId);
 }
 
 public class AuthService : IAuthService
@@ -147,5 +148,22 @@ public class AuthService : IAuthService
             // Logic to send email (mock example)
             await Task.CompletedTask; // Replace with actual email sending
         }
+    }
+
+
+    public async Task DeleteAccount(int userId) // Implement the DeleteAccount method
+    {
+        var user = await _context.Users.FindAsync(userId);
+        if (user == null)
+            throw new Exception("User not found.");
+
+        // Delete the associated patient record (if any)
+        var patient = await _context.Patients.FirstOrDefaultAsync(p => p.UserId == userId);
+        if (patient != null)
+            _context.Patients.Remove(patient);
+
+        // Delete the user
+        _context.Users.Remove(user);
+        await _context.SaveChangesAsync();
     }
 }
