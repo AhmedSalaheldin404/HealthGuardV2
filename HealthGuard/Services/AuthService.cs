@@ -14,7 +14,7 @@ public interface IAuthService
 {
     Task<LoginResponse?> Login(LoginRequest request);
     Task<RegisterResponse> Register(RegisterRequest request);
-    string GenerateJwtToken(User user, bool rememberMe = false); // Updated to include rememberMe
+    string GenerateJwtToken(User user, bool rememberMe = false); //  rememberMe
     Task<bool> IsUsernameExists(string username);
     Task<bool> IsEmailExists(string email);
     Task DeleteAccount(int userId);

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using HealthGuard.Models;
 using System.Text.Json;
+using HealthGuard.Models.HealthGuard.Models;
 
 
 namespace HealthGuard.Data;

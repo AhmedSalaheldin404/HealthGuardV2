@@ -56,39 +56,7 @@ public class AuthController : ControllerBase
             return BadRequest(new { message = ex.Message });
         }
     }
-    [HttpGet("medical-history")]
-    [Authorize] // Ensure only authenticated users can access their medical history
-    public async Task<IActionResult> GetMedicalHistory()
-    {
-        try
-        {
-            // Debug: Get the current user's ID from the claims
-            var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!);
-            Console.WriteLine($"Authenticated User ID: {userId}");
-
-            // Debug: Find the patient record for the user
-            var patient = await _context.Patients.FirstOrDefaultAsync(p => p.UserId == userId);
-            if (patient == null)
-            {
-                return NotFound("Patient record not found.");
-            }
-            Console.WriteLine($"Patient ID: {patient.Id}");
-
-            // Fetch the user's medical history (diagnoses)
-            var medicalHistory = await _context.Diagnoses
-                .Where(d => d.PatientId == patient.Id) // Use PatientId, not UserId
-                .ToListAsync();
-
-            // Debug: Print the number of diagnoses found
-            Console.WriteLine($"Number of diagnoses found: {medicalHistory.Count}");
-
-            return Ok(medicalHistory);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, $"An error occurred: {ex.Message}");
-        }
-    }
+   
 
     [HttpDelete("delete-account")]
     [Authorize] // Ensure only authenticated users can delete their account

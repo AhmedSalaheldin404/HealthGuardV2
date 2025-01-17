@@ -108,22 +108,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
-// Load ML models within a scope
-using (var scope = app.Services.CreateScope())
-{
-    var mlModelService = scope.ServiceProvider.GetRequiredService<IMLModelService>();
-    try
-    {
-        mlModelService.LoadModel(ModelType.BreastCancerModel, Path.Combine(System.AppContext.BaseDirectory, "Models", "breast_cancer_model.zip"));
-        mlModelService.LoadModel(ModelType.HeartDiseaseModel, Path.Combine(System.AppContext.BaseDirectory, "Models", "heart_disease_model.zip"));
-        mlModelService.LoadModel(ModelType.DiabetesModel, Path.Combine(System.AppContext.BaseDirectory, "Models", "diabetes_model.zip"));
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"Error loading models: {ex.Message}");
-    }
-}
-
 // ========== Gemini Chatbot Endpoint ==========
 
 app.MapPost("/chatbot", async ([FromBody] ChatbotRequest request) =>

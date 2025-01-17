@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using Swashbuckle.AspNetCore.Annotations;
 using System.Text.Json.Serialization;
+using HealthGuard.Models.HealthGuard.Models;
 
 namespace HealthGuard.Models
 {

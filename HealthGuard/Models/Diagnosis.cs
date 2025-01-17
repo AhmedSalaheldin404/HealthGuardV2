@@ -4,27 +4,22 @@ using Swashbuckle.AspNetCore.Annotations;
 
 namespace HealthGuard.Models
 {
-    public class Diagnosis
+    namespace HealthGuard.Models
     {
-        [SwaggerSchema(ReadOnly = true)]  // This field will be ignored in Swagger
-        public int Id { get; set; }
-
-        [SwaggerSchema(ReadOnly = true)]  // This field will be ignored in Swagger
-        public int PatientId { get; set; }
-
-        public Patient Patient { get; set; } = null!;
-
-        public DateTime DiagnosisDate { get; set; }
-
-        public string Prediction { get; set; } = string.Empty;
-
-        public double Confidence { get; set; }
-
-        public Dictionary<string, double> Features { get; set; } = new();
-
-        public string? DoctorNotes { get; set; }
-
-        public DiagnosisStatus Status { get; set; }
+     
+            public class Diagnosis
+            {
+                public int Id { get; set; }
+                public int PatientId { get; set; }
+                public Patient Patient { get; set; } = null!;
+                public DateTime DiagnosisDate { get; set; }
+                public string Diagnose { get; set; } = string.Empty; // Renamed from "Prediction" to "Diagnose"
+                public double Confidence { get; set; }
+                public Dictionary<string, double> Features { get; set; } = new();
+                public string? DoctorNotes { get; set; }
+                public DiagnosisStatus Status { get; set; }
+            }
+        
     }
 
     public enum DiagnosisStatus

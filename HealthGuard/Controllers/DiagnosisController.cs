@@ -2,58 +2,55 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using HealthGuard.Models;
 using HealthGuard.Services;
+using System.Security.Claims;
 using System.Threading.Tasks;
+using HealthGuard.Models.HealthGuard.Models;
 
 namespace HealthAPI.Controllers
 {
-    [Authorize]
+    [Authorize] // Require authentication for all endpoints in this controller
     [ApiController]
     [Route("api/[controller]")]
     public class DiagnosisController : ControllerBase
     {
-        private readonly IDiagnosticService _diagnosticService;
         private readonly IMLModelService _mlModelService;
-        private readonly INotificationService _notificationService;
+        private readonly IDiagnosticService _diagnosticService;
+        private readonly IPatientService _patientService;
 
         public DiagnosisController(
-            IDiagnosticService diagnosticService,
             IMLModelService mlModelService,
-            INotificationService notificationService)
+            IDiagnosticService diagnosticService,
+            IPatientService patientService)
         {
-            _diagnosticService = diagnosticService;
             _mlModelService = mlModelService;
-            _notificationService = notificationService;
+            _diagnosticService = diagnosticService;
+            _patientService = patientService;
         }
 
-        [HttpPost]
-        public async Task<ActionResult<Diagnosis>> CreateDiagnosis(DiagnosisRequest request)
+        [HttpPost("diagnose")]
+        public async Task<ActionResult<Diagnosis>> Diagnose([FromForm] DiagnosisRequest request)
         {
             try
             {
-                var (prediction, confidence) = await _mlModelService.Predict(request.Features, request.ModelType);
+                // Use the MLModelService to predict the diagnosis
+                var (diagnose, confidence) = await _mlModelService.PredictFromImage(request.ImageFile);
 
+                // Create a new diagnosis object
                 var diagnosis = new Diagnosis
                 {
                     PatientId = request.PatientId,
                     DiagnosisDate = DateTime.UtcNow,
-                    Prediction = prediction,
+                    Diagnose = diagnose,
                     Confidence = confidence,
-                    Features = request.Features,
+                    Features = new Dictionary<string, double>(),
+                    DoctorNotes = null,
                     Status = confidence < 0.8 ? DiagnosisStatus.RequiresReview : DiagnosisStatus.Completed
                 };
 
-                var result = await _diagnosticService.CreateDiagnosis(diagnosis);
+                // Save the diagnosis to the database
+                var savedDiagnosis = await _diagnosticService.CreateDiagnosis(diagnosis);
 
-                if (diagnosis.Status == DiagnosisStatus.RequiresReview)
-                {
-                    await _notificationService.SendDoctorAlert(
-                        request.DoctorEmail,
-                        request.PatientId,
-                        "High"
-                    );
-                }
-
-                return Ok(result);
+                return Ok(savedDiagnosis);
             }
             catch (Exception ex)
             {
@@ -61,14 +58,46 @@ namespace HealthAPI.Controllers
             }
         }
 
-        [HttpGet("{id}")]
+        [HttpGet("{id}")] // Endpoint to get a diagnosis by ID
         public async Task<ActionResult<Diagnosis>> GetDiagnosis(int id)
         {
-            var diagnosis = await _diagnosticService.GetDiagnosis(id);
-            if (diagnosis == null)
-                return NotFound();
+            try
+            {
+                // Get the current user's ID and role from the JWT token
+                var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!);
+                var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
 
-            return Ok(diagnosis);
+                // Retrieve the diagnosis
+                var diagnosis = await _diagnosticService.GetDiagnosis(id);
+
+                if (diagnosis == null)
+                {
+                    return NotFound($"Diagnosis with ID {id} not found.");
+                }
+
+                // Check if the current user is the patient or the assigned doctor
+                var patient = await _patientService.GetPatient(diagnosis.PatientId);
+                if (patient == null)
+                {
+                    return NotFound($"Patient with ID {diagnosis.PatientId} not found.");
+                }
+
+                if (userRole == "Patient" && patient.UserId != userId)
+                {
+                    return Forbid(); // Deny access if the user is not the patient
+                }
+
+                if (userRole == "Doctor" && patient.DoctorId != userId)
+                {
+                    return Forbid(); // Deny access if the user is not the assigned doctor
+                }
+
+                return Ok(diagnosis);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, ex.Message);
+            }
         }
     }
 }

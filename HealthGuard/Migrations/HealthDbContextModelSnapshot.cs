@@ -22,7 +22,7 @@ namespace HealthGuard.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
-            modelBuilder.Entity("HealthGuard.Models.Diagnosis", b =>
+            modelBuilder.Entity("HealthGuard.Models.HealthGuard.Models.Diagnosis", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -32,6 +32,10 @@ namespace HealthGuard.Migrations
 
                     b.Property<double>("Confidence")
                         .HasColumnType("float");
+
+                    b.Property<string>("Diagnose")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("DiagnosisDate")
                         .HasColumnType("datetime2");
@@ -45,10 +49,6 @@ namespace HealthGuard.Migrations
 
                     b.Property<int>("PatientId")
                         .HasColumnType("int");
-
-                    b.Property<string>("Prediction")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
@@ -138,7 +138,7 @@ namespace HealthGuard.Migrations
                     b.ToTable("Users");
                 });
 
-            modelBuilder.Entity("HealthGuard.Models.Diagnosis", b =>
+            modelBuilder.Entity("HealthGuard.Models.HealthGuard.Models.Diagnosis", b =>
                 {
                     b.HasOne("HealthGuard.Models.Patient", "Patient")
                         .WithMany("Diagnoses")
