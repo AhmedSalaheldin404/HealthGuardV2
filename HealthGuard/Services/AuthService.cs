@@ -13,12 +13,12 @@ namespace HealthGuard.Services;
 public interface IAuthService
 {
     Task<LoginResponse?> Login(LoginRequest request);
-    Task<RegisterResponse> Register(RegisterRequest request); // Corrected method signature
-    string GenerateJwtToken(User user);
-
+    Task<RegisterResponse> Register(RegisterRequest request);
+    string GenerateJwtToken(User user, bool rememberMe = false); // Updated to include rememberMe
     Task<bool> IsUsernameExists(string username);
     Task<bool> IsEmailExists(string email);
     Task DeleteAccount(int userId);
+    Task EditProfile(int userId, EditProfileRequest request);
 }
 
 public class AuthService : IAuthService
@@ -39,14 +39,14 @@ public class AuthService : IAuthService
         if (user == null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
             return null;
 
-        var token = GenerateJwtToken(user);
+        var token = GenerateJwtToken(user, request.RememberMe); // Pass rememberMe flag
 
         return new LoginResponse
         {
             Token = token,
             Username = user.Username,
             Role = user.Role,
-            ExpiresAt = DateTime.UtcNow.AddDays(7)
+            ExpiresAt = request.RememberMe ? DateTime.UtcNow.AddDays(30) : DateTime.UtcNow.AddDays(7) // Adjust expiration time
         };
     }
 
@@ -87,8 +87,7 @@ public class AuthService : IAuthService
         };
     }
 
-
-    public string GenerateJwtToken(User user)
+    public string GenerateJwtToken(User user, bool rememberMe = false) // Updated to include rememberMe
     {
         var key = Encoding.ASCII.GetBytes(_configuration["Jwt:Secret"] ?? throw new InvalidOperationException("JWT secret not configured"));
 
@@ -96,11 +95,11 @@ public class AuthService : IAuthService
         {
             Subject = new ClaimsIdentity(new[]
             {
-            new Claim(ClaimTypes.Name, user.Username),
-            new Claim(ClaimTypes.Role, user.Role.ToString()),
-            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString())
-        }),
-            Expires = DateTime.UtcNow.AddDays(7),
+                new Claim(ClaimTypes.Name, user.Username),
+                new Claim(ClaimTypes.Role, user.Role.ToString()),
+                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString())
+            }),
+            Expires = rememberMe ? DateTime.UtcNow.AddDays(30) : DateTime.UtcNow.AddDays(7), // Adjust expiration time
             SigningCredentials = new SigningCredentials(
                 new SymmetricSecurityKey(key),
                 SecurityAlgorithms.HmacSha256Signature)
@@ -120,6 +119,22 @@ public class AuthService : IAuthService
     public async Task<bool> IsEmailExists(string email)
     {
         return await _context.Users.AnyAsync(u => u.Email == email);
+    }
+
+    public async Task DeleteAccount(int userId)
+    {
+        var user = await _context.Users.FindAsync(userId);
+        if (user == null)
+            throw new Exception("User not found.");
+
+        // Delete the associated patient record (if any)
+        var patient = await _context.Patients.FirstOrDefaultAsync(p => p.UserId == userId);
+        if (patient != null)
+            _context.Patients.Remove(patient);
+
+        // Delete the user
+        _context.Users.Remove(user);
+        await _context.SaveChangesAsync();
     }
 
     public interface IEmailService
@@ -150,20 +165,18 @@ public class AuthService : IAuthService
         }
     }
 
-
-    public async Task DeleteAccount(int userId) // Implement the DeleteAccount method
+    public async Task EditProfile(int userId, EditProfileRequest request)
     {
+        // Find the user in the database
         var user = await _context.Users.FindAsync(userId);
         if (user == null)
             throw new Exception("User not found.");
 
-        // Delete the associated patient record (if any)
-        var patient = await _context.Patients.FirstOrDefaultAsync(p => p.UserId == userId);
-        if (patient != null)
-            _context.Patients.Remove(patient);
+        // Update the user's profile information
+        user.Username = request.Username ?? user.Username; // Update username if provided
+        user.Email = request.Email ?? user.Email; // Update email if provided
 
-        // Delete the user
-        _context.Users.Remove(user);
+        // Save changes to the database
         await _context.SaveChangesAsync();
     }
 }

@@ -16,9 +16,10 @@ public class AuthController : ControllerBase
     private readonly IAuthService _authService;
     private readonly HealthDbContext _context;
 
-    public AuthController(IAuthService authService)
+    public AuthController(IAuthService authService, HealthDbContext context) // Add HealthDbContext parameter
     {
         _authService = authService;
+        _context = context; // Initialize _context with the injected parameter
     }
 
     [HttpPost("login")]
@@ -55,6 +56,39 @@ public class AuthController : ControllerBase
             return BadRequest(new { message = ex.Message });
         }
     }
+    [HttpGet("medical-history")]
+    [Authorize] // Ensure only authenticated users can access their medical history
+    public async Task<IActionResult> GetMedicalHistory()
+    {
+        try
+        {
+            // Debug: Get the current user's ID from the claims
+            var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!);
+            Console.WriteLine($"Authenticated User ID: {userId}");
+
+            // Debug: Find the patient record for the user
+            var patient = await _context.Patients.FirstOrDefaultAsync(p => p.UserId == userId);
+            if (patient == null)
+            {
+                return NotFound("Patient record not found.");
+            }
+            Console.WriteLine($"Patient ID: {patient.Id}");
+
+            // Fetch the user's medical history (diagnoses)
+            var medicalHistory = await _context.Diagnoses
+                .Where(d => d.PatientId == patient.Id) // Use PatientId, not UserId
+                .ToListAsync();
+
+            // Debug: Print the number of diagnoses found
+            Console.WriteLine($"Number of diagnoses found: {medicalHistory.Count}");
+
+            return Ok(medicalHistory);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, $"An error occurred: {ex.Message}");
+        }
+    }
 
     [HttpDelete("delete-account")]
     [Authorize] // Ensure only authenticated users can delete their account
@@ -75,6 +109,66 @@ public class AuthController : ControllerBase
             return StatusCode(500, $"An error occurred: {ex.Message}");
         }
     }
+
+    [HttpPut("edit-profile")]
+    [Authorize] // Ensure only authenticated users can edit their profile
+    public async Task<IActionResult> EditProfile([FromBody] EditProfileRequest request)
+    {
+        try
+        {
+            // Debug: Check if the request object is null
+            if (request == null)
+            {
+                return BadRequest("Request body is null.");
+            }
+
+            // Debug: Check if the User object is null
+            if (User == null)
+            {
+                return BadRequest("User object is null.");
+            }
+
+            // Debug: Check if the NameIdentifier claim is null
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim == null)
+            {
+                return BadRequest("NameIdentifier claim is missing from the JWT token.");
+            }
+
+            // Debug: Print the userIdClaim value
+            Console.WriteLine($"User ID Claim: {userIdClaim.Value}");
+
+            // Get the current user's ID from the claims
+            var userId = int.Parse(userIdClaim.Value);
+
+            // Debug: Check if the _context object is null
+            if (_context == null)
+            {
+                return StatusCode(500, "Database context is null.");
+            }
+
+            // Debug: Check if the user exists in the database
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null)
+            {
+                return NotFound("User not found.");
+            }
+
+            // Debug: Print the user details
+            Console.WriteLine($"User found: {user.Username}, {user.Email}");
+
+            // Update the user's profile information
+            user.Username = request.Username ?? user.Username; // Update username if provided
+            user.Email = request.Email ?? user.Email; // Update email if provided
+
+            // Save changes to the database
+            await _context.SaveChangesAsync();
+
+            return Ok("Profile updated successfully.");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, $"An error occurred: {ex.Message}");
+        }
+    }
 }
-
-
