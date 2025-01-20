@@ -16,7 +16,7 @@ using System.Text;
 var builder = WebApplication.CreateBuilder(args);
 
 // ========== Configure Services ==========
-
+builder.Services.AddControllers();
 // Add services to the container.
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -66,6 +66,7 @@ builder.Services.AddScoped<IMLModelService, MLModelService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 
+
 // Configure JWT authentication
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -102,14 +103,17 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseSwagger();
+app.UseSwaggerUI();
+
 app.UseHttpsRedirection();
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
-// ========== Gemini Chatbot Endpoint ==========
 
+// ========== Gemini Chatbot Endpoint ==========
 app.MapPost("/chatbot", async ([FromBody] ChatbotRequest request) =>
 {
     if (string.IsNullOrEmpty(request.Message))

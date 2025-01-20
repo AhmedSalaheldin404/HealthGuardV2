@@ -5,8 +5,12 @@ namespace HealthGuard.Models.Auth;
 public class RegisterRequest
 {
     [Required]
-    [MinLength(3)]
-    public string Username { get; set; } = string.Empty;
+    [MinLength(2)]
+    public string FirstName { get; set; } = string.Empty;
+
+    [Required]
+    [MinLength(2)]
+    public string LastName { get; set; } = string.Empty;
 
     [Required]
     [MinLength(6)]

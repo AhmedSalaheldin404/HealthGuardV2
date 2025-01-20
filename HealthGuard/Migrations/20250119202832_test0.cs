@@ -5,7 +5,7 @@
 namespace HealthGuard.Migrations
 {
     /// <inheritdoc />
-    public partial class test3 : Migration
+    public partial class test0 : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)

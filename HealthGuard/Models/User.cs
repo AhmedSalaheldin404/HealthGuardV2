@@ -1,13 +1,14 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace HealthGuard.Models;
-
 public class User
 {
     public int Id { get; set; }
 
     [Required]
-    public string Username { get; set; } = string.Empty;
+    public string FirstName { get; set; } = string.Empty;
+
+    [Required]
+    public string LastName { get; set; } = string.Empty;
 
     [Required]
     public string PasswordHash { get; set; } = string.Empty;
@@ -20,6 +21,8 @@ public class User
     public UserRole Role { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public string? PasswordResetToken { get; set; }
 }
 
 public enum UserRole

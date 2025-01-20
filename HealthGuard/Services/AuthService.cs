@@ -14,8 +14,7 @@ public interface IAuthService
 {
     Task<LoginResponse?> Login(LoginRequest request);
     Task<RegisterResponse> Register(RegisterRequest request);
-    string GenerateJwtToken(User user, bool rememberMe = false); //  rememberMe
-    Task<bool> IsUsernameExists(string username);
+    string GenerateJwtToken(User user, bool rememberMe = false);
     Task<bool> IsEmailExists(string email);
     Task DeleteAccount(int userId);
     Task EditProfile(int userId, EditProfileRequest request);
@@ -34,31 +33,40 @@ public class AuthService : IAuthService
 
     public async Task<LoginResponse?> Login(LoginRequest request)
     {
-        var user = await _context.Users.FirstOrDefaultAsync(u => u.Username == request.Username);
+        // Find the user by email
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
 
         if (user == null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
             return null;
 
-        var token = GenerateJwtToken(user, request.RememberMe); // Pass rememberMe flag
+        var token = GenerateJwtToken(user, request.RememberMe);
 
         return new LoginResponse
         {
             Token = token,
-            Username = user.Username,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            Email = user.Email,
             Role = user.Role,
-            ExpiresAt = request.RememberMe ? DateTime.UtcNow.AddDays(30) : DateTime.UtcNow.AddDays(7) // Adjust expiration time
+            ExpiresAt = request.RememberMe ? DateTime.UtcNow.AddDays(30) : DateTime.UtcNow.AddDays(7)
         };
     }
 
     public async Task<RegisterResponse> Register(RegisterRequest request)
     {
-        // Check if the username exists
-        if (await IsUsernameExists(request.Username))
-            throw new Exception("Username already exists");
+        // Validate the request
+        if (string.IsNullOrEmpty(request.FirstName) || string.IsNullOrEmpty(request.LastName) ||
+            string.IsNullOrEmpty(request.Password) || string.IsNullOrEmpty(request.Email) ||
+            !Enum.IsDefined(typeof(UserRole), request.Role))
+        {
+            throw new ArgumentException("Invalid registration request. All fields are required.");
+        }
 
-        // Check if the email exists
+        // Check if the email already exists
         if (await IsEmailExists(request.Email))
-            throw new Exception("Email already exists");
+        {
+            throw new ArgumentException("Email already exists.");
+        }
 
         // Hash the password
         var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
@@ -66,28 +74,39 @@ public class AuthService : IAuthService
         // Create the new user
         var user = new User
         {
-            Username = request.Username,
+            FirstName = request.FirstName,
+            LastName = request.LastName,
             Email = request.Email,
             Role = request.Role,
             PasswordHash = passwordHash,
             CreatedAt = DateTime.UtcNow
         };
 
-        _context.Users.Add(user);
-        await _context.SaveChangesAsync();
+        try
+        {
+            _context.Users.Add(user);
+            await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex)
+        {
+            // Log the inner exception for debugging
+            Console.WriteLine($"DbUpdateException: {ex.InnerException?.Message}");
+            throw new Exception("An error occurred while saving the user to the database.", ex);
+        }
 
-        // Return the UserResponse without the PasswordHash
+        // Return the RegisterResponse
         return new RegisterResponse
         {
             Id = user.Id,
-            Username = user.Username,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
             Email = user.Email,
             Role = user.Role,
             CreatedAt = user.CreatedAt
         };
     }
 
-    public string GenerateJwtToken(User user, bool rememberMe = false) // Updated to include rememberMe
+    public string GenerateJwtToken(User user, bool rememberMe = false)
     {
         var key = Encoding.ASCII.GetBytes(_configuration["Jwt:Secret"] ?? throw new InvalidOperationException("JWT secret not configured"));
 
@@ -95,11 +114,13 @@ public class AuthService : IAuthService
         {
             Subject = new ClaimsIdentity(new[]
             {
-                new Claim(ClaimTypes.Name, user.Username),
+                new Claim(ClaimTypes.Name, user.Email), // Use Email as the unique identifier
                 new Claim(ClaimTypes.Role, user.Role.ToString()),
-                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString())
+                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                new Claim("FirstName", user.FirstName), // Add FirstName claim
+                new Claim("LastName", user.LastName) // Add LastName claim
             }),
-            Expires = rememberMe ? DateTime.UtcNow.AddDays(30) : DateTime.UtcNow.AddDays(7), // Adjust expiration time
+            Expires = rememberMe ? DateTime.UtcNow.AddDays(30) : DateTime.UtcNow.AddDays(7),
             SigningCredentials = new SigningCredentials(
                 new SymmetricSecurityKey(key),
                 SecurityAlgorithms.HmacSha256Signature)
@@ -109,11 +130,6 @@ public class AuthService : IAuthService
         var token = tokenHandler.CreateToken(tokenDescriptor);
 
         return tokenHandler.WriteToken(token);
-    }
-
-    public async Task<bool> IsUsernameExists(string username)
-    {
-        return await _context.Users.AnyAsync(u => u.Username == username);
     }
 
     public async Task<bool> IsEmailExists(string email)
@@ -137,25 +153,82 @@ public class AuthService : IAuthService
         await _context.SaveChangesAsync();
     }
 
+    public async Task EditProfile(int userId, EditProfileRequest request)
+    {
+        // Find the user in the database
+        var user = await _context.Users.FindAsync(userId);
+        if (user == null)
+            throw new Exception("User not found.");
+
+        // Update the user's profile information
+        user.FirstName = request.FirstName ?? user.FirstName; // Update first name if provided
+        user.LastName = request.LastName ?? user.LastName; // Update last name if provided
+        user.Email = request.Email ?? user.Email; // Update email if provided
+
+        // Save changes to the database
+        await _context.SaveChangesAsync();
+    }
+
+    // Nested IEmailService interface
     public interface IEmailService
     {
         Task<string> GeneratePasswordResetTokenAsync(string email);
         Task<bool> ResetPasswordAsync(string token, string newPassword);
         Task SendEmailAsync(string to, string subject, string body);
+        Task<string> GenerateVerificationCodeAsync(); // Add this method
     }
 
+    // Nested EmailService class implementing IEmailService
     public class EmailService : IEmailService
     {
+        private readonly Random _random = new Random();
+        private readonly HealthDbContext _context;
+
+        public EmailService(HealthDbContext context)
+        {
+            _context = context;
+        }
+
+        public async Task<string> GenerateVerificationCodeAsync()
+        {
+            // Generate a 4-digit verification code
+            return _random.Next(1000, 9999).ToString();
+        }
+
         public async Task<string> GeneratePasswordResetTokenAsync(string email)
         {
-            // Logic to generate token (mock example)
-            return "mock-token"; // Replace with actual token generation logic
+            // Generate a 4-digit verification code
+            var verificationCode = await GenerateVerificationCodeAsync();
+
+            // Find the user by email
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
+            if (user == null)
+                return null; // User not found
+
+            // Save the verification code to the user's record
+            user.PasswordResetToken = verificationCode;
+            await _context.SaveChangesAsync();
+
+            return verificationCode;
         }
 
         public async Task<bool> ResetPasswordAsync(string token, string newPassword)
         {
-            // Logic to validate token and reset password (mock example)
-            return token == "mock-token"; // Replace with actual validation
+            // Find the user by the verification code (token)
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.PasswordResetToken == token);
+            if (user == null)
+                return false; // Invalid or expired token
+
+            // Hash the new password
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
+
+            // Clear the password reset token
+            user.PasswordResetToken = null;
+
+            // Save changes to the database
+            await _context.SaveChangesAsync();
+
+            return true;
         }
 
         public async Task SendEmailAsync(string to, string subject, string body)
@@ -165,18 +238,4 @@ public class AuthService : IAuthService
         }
     }
 
-    public async Task EditProfile(int userId, EditProfileRequest request)
-    {
-        // Find the user in the database
-        var user = await _context.Users.FindAsync(userId);
-        if (user == null)
-            throw new Exception("User not found.");
-
-        // Update the user's profile information
-        user.Username = request.Username ?? user.Username; // Update username if provided
-        user.Email = request.Email ?? user.Email; // Update email if provided
-
-        // Save changes to the database
-        await _context.SaveChangesAsync();
-    }
 }

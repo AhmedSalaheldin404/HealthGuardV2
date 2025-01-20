@@ -16,50 +16,52 @@ public class AuthController : ControllerBase
     private readonly IAuthService _authService;
     private readonly HealthDbContext _context;
 
-    public AuthController(IAuthService authService, HealthDbContext context) // Add HealthDbContext parameter
+    public AuthController(IAuthService authService, HealthDbContext context)
     {
         _authService = authService;
-        _context = context; // Initialize _context with the injected parameter
+        _context = context;
     }
 
+    // Login with form-data
     [HttpPost("login")]
-    public async Task<ActionResult<LoginResponse>> Login(LoginRequest request)
+    public async Task<ActionResult<LoginResponse>> Login([FromForm] LoginRequest request)
     {
         var response = await _authService.Login(request);
 
         if (response == null)
-            return Unauthorized(new { message = "Invalid username or password" });
+            return Unauthorized(new { message = "Invalid email or password" });
 
         return Ok(response);
     }
 
+    // Register with form-data
     [HttpPost("register")]
-    public async Task<ActionResult<User>> Register(RegisterRequest request)
+    public async Task<ActionResult<RegisterResponse>> Register([FromForm] RegisterRequest request)
     {
         try
         {
-            // Check if the username exists
-            if (await _authService.IsUsernameExists(request.Username))
-                return BadRequest(new { message = "Username already exists" });
-
             // Check if the email exists
             if (await _authService.IsEmailExists(request.Email))
                 return BadRequest(new { message = "Email already exists" });
 
-            // Register the user with the RegisterRequest
-            var result = await _authService.Register(request); // Pass the whole request, not individual properties
+            // Register the user
+            var result = await _authService.Register(request);
 
             return Ok(result);
         }
-        catch (Exception ex)
+        catch (ArgumentException ex)
         {
             return BadRequest(new { message = ex.Message });
         }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = "An error occurred while registering the user.", details = ex.Message });
+        }
     }
-   
 
+    // Delete account
     [HttpDelete("delete-account")]
-    [Authorize] // Ensure only authenticated users can delete their account
+    [Authorize]
     public async Task<IActionResult> DeleteAccount()
     {
         try
@@ -78,59 +80,18 @@ public class AuthController : ControllerBase
         }
     }
 
+    // Edit profile with form-data
     [HttpPut("edit-profile")]
-    [Authorize] // Ensure only authenticated users can edit their profile
-    public async Task<IActionResult> EditProfile([FromBody] EditProfileRequest request)
+    [Authorize]
+    public async Task<IActionResult> EditProfile([FromForm] EditProfileRequest request)
     {
         try
         {
-            // Debug: Check if the request object is null
-            if (request == null)
-            {
-                return BadRequest("Request body is null.");
-            }
-
-            // Debug: Check if the User object is null
-            if (User == null)
-            {
-                return BadRequest("User object is null.");
-            }
-
-            // Debug: Check if the NameIdentifier claim is null
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
-            if (userIdClaim == null)
-            {
-                return BadRequest("NameIdentifier claim is missing from the JWT token.");
-            }
-
-            // Debug: Print the userIdClaim value
-            Console.WriteLine($"User ID Claim: {userIdClaim.Value}");
-
             // Get the current user's ID from the claims
-            var userId = int.Parse(userIdClaim.Value);
-
-            // Debug: Check if the _context object is null
-            if (_context == null)
-            {
-                return StatusCode(500, "Database context is null.");
-            }
-
-            // Debug: Check if the user exists in the database
-            var user = await _context.Users.FindAsync(userId);
-            if (user == null)
-            {
-                return NotFound("User not found.");
-            }
-
-            // Debug: Print the user details
-            Console.WriteLine($"User found: {user.Username}, {user.Email}");
+            var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!);
 
             // Update the user's profile information
-            user.Username = request.Username ?? user.Username; // Update username if provided
-            user.Email = request.Email ?? user.Email; // Update email if provided
-
-            // Save changes to the database
-            await _context.SaveChangesAsync();
+            await _authService.EditProfile(userId, request);
 
             return Ok("Profile updated successfully.");
         }
